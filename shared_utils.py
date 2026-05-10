@@ -10,8 +10,7 @@ import threading
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
-import chromadb
-from chromadb.config import Settings
+from chromadb import PersistentClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,17 +38,11 @@ def init_db() -> None:
     global client, collection
     
     try:
-        # Initialize persistent ChromaDB client
+        # Initialize persistent ChromaDB client (new API)
         db_path = os.getenv("CHROMA_DB_PATH", "./chroma_data")
-        settings = Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=db_path,
-            anonymized_telemetry=False,
-        )
-        
-        client = chromadb.Client(settings)
-        logger.info(f"ChromaDB client initialized with path: {db_path}")
-        
+        client = PersistentClient(path=db_path)
+        logger.info(f"ChromaDB PersistentClient initialized with path: {db_path}")
+
         # Get or create collection
         collection = client.get_or_create_collection(
             name="isletme_verileri",

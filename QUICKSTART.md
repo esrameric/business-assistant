@@ -1,5 +1,24 @@
 # 🚀 Hızlı Başlangıç
 
+> **Gereksinim: Python 3.11.x**
+
+Proje, Python 3.11 ile tam uyumludur. Lütfen önce [python.org/downloads/release/python-3110/](https://www.python.org/downloads/release/python-3110/) adresinden Python 3.11.x sürümünü indirip kurun.
+
+## 0️⃣ Python 3.11 ile Sanal Ortam Oluşturun
+
+Windows:
+```bash
+py -3.11 -m venv venv
+venv\Scripts\activate
+```
+Mac/Linux:
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+```
+
+---
+
 Projeyi 2 dakikada çalıştırmak için bu rehberi takip edin.
 
 ## 1️⃣ Bağımlılıkları Yükleyin
