@@ -1,0 +1,141 @@
+# ====================================================================
+# Git Ignore for RAG Business Assistant Project
+# ====================================================================
+
+# 🔐 SENSITIVE DATA - NEVER COMMIT
+# ====================================================================
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+*.crt
+private/
+secrets/
+
+# 🐍 Python Environment & Cache
+# ====================================================================
+venv/
+env/
+ENV/
+.venv
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 💻 IDE & Editor Settings
+# ====================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+
+# 📊 Database & Data Files
+# ====================================================================
+chroma_data/
+*.db
+*.sqlite
+*.sqlite3
+*.dbf
+*.mdf
+data/
+dumps/
+
+# 📝 Logs & Temporary Files
+# ====================================================================
+logs/
+*.log
+*.log.*
+temp/
+tmp/
+*.tmp
+.temp
+
+# 🧪 Testing & Coverage
+# ====================================================================
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+*.cover
+test-results/
+coverage.xml
+
+# 🔧 Build & Distribution
+# ====================================================================
+build/
+dist/
+*.egg-info/
+.eggs/
+*.whl
+
+# 🖥️ OS Specific Files
+# ====================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.AppleDouble
+.LSOverride
+.Icon
+
+# 📦 Package Manager
+# ====================================================================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# 🌐 Virtual Environment & Tools
+# ====================================================================
+.streamlit/
+.jupyter/
+.ipynb_checkpoints/
+*.ipynb
+
+# 🗂️ Project Specific
+# ====================================================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+*.pyo
+*.pyd
+.env.backup
+credentials.json
+config.backup.json
+
+# 🔐 Sensitive Folders
+# ====================================================================
+secrets/
+.secrets/
+private/
+credentials/
