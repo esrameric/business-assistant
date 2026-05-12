@@ -61,24 +61,40 @@ app.add_middleware(
 )
 
 
-# Health check endpoint
+# ── Router'ları aktive et ────────────────────────────────────────────────────
+from routers import whatsapp_router, chat_router
+
+app.include_router(
+    whatsapp_router.router,
+    prefix="/api/whatsapp",
+    tags=["WhatsApp"]
+)
+
+app.include_router(
+    chat_router.router,
+    prefix="/api/chat",
+    tags=["Chat"]
+)
+
+
+# ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])
 async def health_check():
-    """
-    Health check endpoint.
-    
-    Returns:
-        Health status information
-    """
     return {
         "status": "healthy",
         "service": "RAG Business Assistant API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "endpoints": {
+            "whatsapp_webhook": "/api/whatsapp/webhook",
+            "whatsapp_send":    "/api/whatsapp/send",
+            "chat_message":     "/api/chat/message",
+            "chat_history":     "/api/chat/history",
+        }
     }
 
 
 # ==================== Router Mounting Points ====================
-# Developer B: Uncomment and add chat router
+# Developer B: Uncomment and add chat router (DONE)
 # from routers import chat_router
 # app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
 
