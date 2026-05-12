@@ -171,6 +171,15 @@ streamlit run chatbot_ui.py
 python main.py
 # Swagger UI: http://localhost:8000/docs
 ```
+### Nasıl Çalışır?
+```WhatsApp Akışı:
+# Müşteri WhatsApp'tan yazar
+    → Twilio webhook'u /api/whatsapp/webhook'a POST atar
+    → ChromaDB'den ilgili sipariş/stok verisi çekilir
+    → Gemini AI akıllı cevap üretir
+    → TwiML ile yanıt Twilio'ya döner
+    → Müşteriye WhatsApp mesajı gider
+```
 
 ---
 
