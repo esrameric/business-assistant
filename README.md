@@ -465,9 +465,9 @@ Bu proje özel kullanım için hazırlanmıştır.
 
 ## 👥 Ekip
 
-- **Geliştirici A:** Altyapı ve Veritabanı
-- **Geliştirici B:** Sohbet ve UI
-- **Geliştirici C:** Otomasyon ve E-posta
+- **Geliştirici A:** Altyapı ve Veritabanı ( Esra Meriç TOPAKTAŞ )
+- **Geliştirici B:** Sohbet ve UI ( Yasemin KOÇBIYIK )
+- **Geliştirici C:** Otomasyon ve E-posta ( Taha Yusuf ERTEN )
 
 ---
 
