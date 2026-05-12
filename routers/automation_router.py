@@ -1,239 +1,140 @@
 """
-Automation router for scheduled tasks API.
+Automation router — zamanlanmış görev yönetimi ve e-posta tetikleyici endpoint'leri.
 Developed by: Developer C
-
-This module handles automation-related endpoints including:
-- Job scheduling and management
-- Email report configuration
-- Task status monitoring
 """
+
+import logging
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+# ==================== Pydantic Modelleri ====================
+
 class JobInfo(BaseModel):
-    """Scheduled job information"""
     id: str
     name: str
     next_run_time: Optional[str] = None
     trigger: str
 
 
-class EmailConfig(BaseModel):
-    """Email configuration model"""
-    recipients: List[str]
-    include_stock_report: bool = True
-    include_orders_report: bool = True
-    include_tasks_report: bool = True
-
-
 class JobResponse(BaseModel):
-    """Response for job operations"""
     success: bool
     message: str
     job_id: Optional[str] = None
 
 
-@router.get("/jobs", response_model=List[JobInfo])
+class HealthResponse(BaseModel):
+    status: str
+    scheduler_running: bool
+    job_count: int
+    message: str
+
+
+# ==================== Endpoint'ler ====================
+
+@router.get("/jobs", response_model=List[JobInfo], summary="Tüm zamanlanmış görevleri listele")
 async def get_scheduled_jobs():
     """
-    Get list of all scheduled jobs.
-    
-    Returns:
-        List of JobInfo objects with job details
-    
-    TODO: Developer C - Implement this endpoint
-    
-    Implementation:
-    1. Import get_jobs_info() from automation module
-    2. Call the function and return results
+    APScheduler'daki tüm kayıtlı görevleri döner.
     """
-    
     try:
-        # Placeholder response
-        raise HTTPException(
-            status_code=501,
-            detail="Jobs listing not yet implemented. Developer C: Add implementation here."
-        )
-        
+        from automation import get_jobs_info
+        jobs = get_jobs_info()
+        return [JobInfo(**j) for j in jobs]
     except Exception as e:
-        logger.error(f"Jobs retrieval failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Görev listesi alınamadı: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Görev listesi alınamadı: {str(e)}")
 
 
-@router.post("/jobs/email-report", response_model=JobResponse)
-async def configure_email_report(config: EmailConfig):
-    """
-    Configure daily email report settings.
-    
-    Args:
-        config: EmailConfig with report preferences
-    
-    Returns:
-        JobResponse with success status
-    
-    TODO: Developer C - Implement this endpoint
-    
-    Implementation:
-    1. Validate email addresses
-    2. Store configuration (database/file)
-    3. Update/recreate scheduled job
-    4. Return success confirmation
-    """
-    
-    try:
-        raise HTTPException(
-            status_code=501,
-            detail="Email report configuration not yet implemented. Developer C: Add implementation here."
-        )
-        
-    except Exception as e:
-        logger.error(f"Email configuration failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/jobs/{job_id}/trigger", response_model=JobResponse)
+@router.post(
+    "/jobs/{job_id}/trigger",
+    response_model=JobResponse,
+    summary="Bir görevi manuel olarak tetikle",
+)
 async def trigger_job_manually(job_id: str):
     """
-    Manually trigger a scheduled job immediately.
-    
-    Args:
-        job_id: Unique job identifier
-    
-    Returns:
-        JobResponse with execution status
-    
-    TODO: Developer C - Implement this endpoint
-    
-    Implementation:
-    1. Validate job_id exists
-    2. Execute job function immediately
-    3. Log execution
-    4. Return results
+    `email_report_job` veya `critical_stock_check` görevini anında çalıştırır.
+    Demo/jüri sunumunda manuel tetikleme için kullanılır.
     """
-    
-    try:
+    ALLOWED_JOBS = {
+        "email_report_job": "send_email_report",
+        "critical_stock_check": "check_critical_stock",
+    }
+
+    if job_id not in ALLOWED_JOBS:
         raise HTTPException(
-            status_code=501,
-            detail="Manual job triggering not yet implemented. Developer C: Add implementation here."
+            status_code=404,
+            detail=f"Bilinmeyen job_id '{job_id}'. Geçerli değerler: {list(ALLOWED_JOBS.keys())}",
         )
-        
+
+    try:
+        import automation
+        func = getattr(automation, ALLOWED_JOBS[job_id])
+        result = func()
+        logger.info(f"Manuel tetikleme: {job_id} → {result}")
+        return JobResponse(
+            success=True,
+            message=f"'{job_id}' başarıyla çalıştırıldı. Sonuç: {result}",
+            job_id=job_id,
+        )
     except Exception as e:
-        logger.error(f"Job triggering failed: {str(e)}")
+        logger.error(f"Manuel tetikleme hatası ({job_id}): {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/jobs/{job_id}/status")
-async def get_job_status(job_id: str):
+@router.post(
+    "/test-email",
+    response_model=JobResponse,
+    summary="Demo için anında rapor maili gönder",
+)
+async def send_test_email():
     """
-    Get status of a specific scheduled job.
-    
-    Args:
-        job_id: Unique job identifier
-    
-    Returns:
-        Job status information
-    
-    TODO: Developer C - Implement this endpoint
+    Demo sırasında jüriye anlık e-posta raporu göndermek için kullanılır.
+    `send_email_report()` fonksiyonunu doğrudan çağırır.
     """
-    
     try:
-        raise HTTPException(
-            status_code=501,
-            detail="Job status retrieval not yet implemented. Developer C: Add implementation here."
-        )
-        
+        from automation import send_email_report
+        success = send_email_report()
+        if success:
+            return JobResponse(success=True, message="Test e-postası başarıyla gönderildi.")
+        else:
+            return JobResponse(
+                success=False,
+                message="E-posta gönderilemedi. EMAIL_SENDER/EMAIL_PASSWORD .env dosyasında tanımlı mı?",
+            )
     except Exception as e:
-        logger.error(f"Job status retrieval failed: {str(e)}")
+        logger.error(f"Test e-posta hatası: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/jobs/{job_id}/pause", response_model=JobResponse)
-async def pause_job(job_id: str):
+@router.get("/health", response_model=HealthResponse, summary="Otomasyon modülü sağlık kontrolü")
+async def automation_health():
     """
-    Pause a scheduled job.
-    
-    Args:
-        job_id: Unique job identifier
-    
-    Returns:
-        JobResponse with pause status
-    
-    TODO: Developer C - Implement this endpoint
+    Scheduler'ın çalışıp çalışmadığını ve kayıtlı görev sayısını döner.
     """
-    
     try:
-        raise HTTPException(
-            status_code=501,
-            detail="Job pausing not yet implemented. Developer C: Add implementation here."
+        from automation import scheduler, get_jobs_info
+
+        running = scheduler is not None and scheduler.running
+        jobs = get_jobs_info()
+
+        return HealthResponse(
+            status="healthy" if running else "degraded",
+            scheduler_running=running,
+            job_count=len(jobs),
+            message="Scheduler aktif." if running else "Scheduler çalışmıyor — setup_automation() çağrıldı mı?",
         )
-        
     except Exception as e:
-        logger.error(f"Job pause failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/jobs/{job_id}/resume", response_model=JobResponse)
-async def resume_job(job_id: str):
-    """
-    Resume a paused scheduled job.
-    
-    Args:
-        job_id: Unique job identifier
-    
-    Returns:
-        JobResponse with resume status
-    
-    TODO: Developer C - Implement this endpoint
-    """
-    
-    try:
-        raise HTTPException(
-            status_code=501,
-            detail="Job resuming not yet implemented. Developer C: Add implementation here."
+        logger.error(f"Health check hatası: {str(e)}")
+        return HealthResponse(
+            status="unhealthy",
+            scheduler_running=False,
+            job_count=0,
+            message=str(e),
         )
-        
-    except Exception as e:
-        logger.error(f"Job resume failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Integration hints for Developer C:
-#
-# 1. Import in main.py:
-#    from routers import automation_router
-#    app.include_router(automation_router.router, prefix="/api/automation", tags=["Automation"])
-#
-# 2. Required functions from automation module:
-#    - init_scheduler(): Initialize scheduler
-#    - start_scheduler(): Start scheduler
-#    - get_jobs_info(): Get all jobs
-#    - send_email_report(): Main email function
-#
-# 3. Email implementation example:
-#    import smtplib
-#    from email.mime.text import MIMEText
-#    from email.mime.multipart import MIMEMultipart
-#    
-#    # Connect to Gmail SMTP
-#    server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-#    server.login(email_sender, email_password)
-#    server.send_message(msg)
-#    server.quit()
-#
-# 4. Report generation:
-#    - Query ChromaDB for business metrics
-#    - Generate HTML/PDF with results
-#    - Format data into table format
-#
-# 5. Error handling:
-#    - Log failures to database
-#    - Retry logic with exponential backoff
-#    - Notification for critical failures

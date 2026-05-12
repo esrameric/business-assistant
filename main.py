@@ -82,9 +82,9 @@ async def health_check():
 # from routers import chat_router
 # app.include_router(chat_router.router, prefix="/api/chat", tags=["Chat"])
 
-# Developer C: Uncomment and add automation router
-# from routers import automation_router
-# app.include_router(automation_router.router, prefix="/api/automation", tags=["Automation"])
+# Developer C: Automation router
+from routers import automation_router
+app.include_router(automation_router.router, prefix="/api/automation", tags=["Automation"])
 
 # Additional routers can be added here following the same pattern
 
