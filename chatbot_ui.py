@@ -39,10 +39,23 @@ def initialize_session_state():
         st.session_state.gemini_model = None
         try:
             import google.generativeai as genai
+            
+            def send_email_action():
+                """Kullanıcının isteği üzerine (örneğin 'raporu mail at', 'mail gönder' vb. taleplerde) ilgili e-posta adresine işletmenin güncel stok, sipariş ve görev bilgilerini içeren günlük değerlendirme raporunu gönderir."""
+                try:
+                    from automation import send_email_report
+                    send_email_report()
+                    return "E-posta raporu başarıyla gönderildi."
+                except Exception as e:
+                    return f"E-posta gönderilirken hata oluştu: {str(e)}"
+
             if config.GEMINI_API_KEY:
                 genai.configure(api_key=config.GEMINI_API_KEY)
-                st.session_state.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
-                logger.info("Gemini model initialized")
+                st.session_state.gemini_model = genai.GenerativeModel(
+                    "gemini-2.5-flash",
+                    tools=[send_email_action]
+                )
+                logger.info("Gemini model initialized with tools")
             else:
                 logger.warning("GEMINI_API_KEY not set")
         except Exception as e:
@@ -147,14 +160,27 @@ def render_sidebar():
 def get_gemini_response(user_message: str, temperature: float, max_results: int) -> str:
     """Retrieve ChromaDB context and query Gemini for a response."""
     try:
+        from shared_utils import get_collection
+        
+        # 1. Semantik arama sonuçları
         context_data = get_context(user_message, n_results=max_results)
 
+        # 2. Tüm veritabanının kesin durumu (Sayı ve miktarlar için kesin kaynak)
+        collection = get_collection()
+        all_data = collection.get()
+        db_summary = ["--- TÜM GÜNCEL VERİTABANI ÖZETİ ---"]
+        for doc, meta in zip(all_data.get("documents", []), all_data.get("metadatas", [])):
+            meta_str = ", ".join(f"{k}: {v}" for k, v in meta.items() if k != "son_guncelleme")
+            db_summary.append(f"[{meta.get('type', 'belge').upper()}] {doc} -> Detaylar: {meta_str}")
+        full_database_context = "\n".join(db_summary)
+
         if not context_data.get("success") or not context_data["documents"]:
-            context_text = "Veritabanında ilgili bilgi bulunamadı."
+            context_text = "Semantik arama sonucu bulunamadı."
         else:
             parts = []
             for doc, meta in zip(context_data["documents"], context_data["metadatas"]):
-                parts.append(f"- {doc} (Tür: {meta.get('type', 'bilinmiyor')})")
+                meta_str = ", ".join(f"{k}: {v}" for k, v in meta.items())
+                parts.append(f"- Bilgi: {doc} | Veritabanı Detayları: {meta_str}")
             context_text = "\n".join(parts)
 
         model = st.session_state.get("gemini_model")
@@ -167,9 +193,13 @@ def get_gemini_response(user_message: str, temperature: float, max_results: int)
         import google.generativeai as genai
 
         full_prompt = (
-            "Sen bir KOBİ işletme asistanısın. Aşağıdaki bağlamda sağlanan "
-            "stok, sipariş ve görev verilerini kullanarak kullanıcının sorusunu Türkçe yanıtla.\n"
-            f"BAĞLAM:\n{context_text}\n\n"
+            "Sen bir KOBİ işletme asistanısın. Kullanıcının sorusunu yanıtlarken "
+            "AŞAĞIDAKİ TÜM GÜNCEL VERİ TABANI TABLOLARINI BİRİNCİL KAYNAK OLARAK KULLAN.\n"
+            "Kullanıcı herhangi bir ürünün stok miktarını, fiyatını veya sipariş durumunu soruyorsa, "
+            "veritabanı özetine bakarak KESİN VE NET SAYILARI VER. Veritabanındaki ürün ismine benzeyen öğeleri bul ve miktar parametresini ("
+            "meta_str = 'miktar: 46') içeren detayı kullanarak söyle.\n\n"
+            f"{full_database_context}\n\n"
+            f"İLGİLİ SEMANTİK ARAMALAR:\n{context_text}\n\n"
             f"Kullanıcı sorusu: {user_message}"
         )
 
@@ -178,7 +208,8 @@ def get_gemini_response(user_message: str, temperature: float, max_results: int)
             max_output_tokens=1024,
         )
 
-        response = model.generate_content(full_prompt, generation_config=generation_config)
+        chat = model.start_chat(enable_automatic_function_calling=True)
+        response = chat.send_message(full_prompt, generation_config=generation_config)
         return response.text
 
     except Exception as e:

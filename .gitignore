@@ -143,3 +143,5 @@ credentials/
 CLAUDE.md
 .env
 .env.example
+
+.claude/
