@@ -4,9 +4,11 @@ Developed by: Developer B
 """
 
 import streamlit as st
+import pandas as pd
 import logging
 from dotenv import load_dotenv
-from shared_utils import init_db, start_simulation_scheduler
+from shared_utils import init_db, start_simulation_scheduler, get_context, get_collection
+from config import config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +35,19 @@ def initialize_session_state():
             logger.error(f"Failed to initialize database: {e}")
             st.error(f"❌ Veritabanı başlatılamadı: {e}")
 
+    if "gemini_model" not in st.session_state:
+        st.session_state.gemini_model = None
+        try:
+            import google.generativeai as genai
+            if config.GEMINI_API_KEY:
+                genai.configure(api_key=config.GEMINI_API_KEY)
+                st.session_state.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+                logger.info("Gemini model initialized")
+            else:
+                logger.warning("GEMINI_API_KEY not set")
+        except Exception as e:
+            logger.error(f"Gemini initialization failed: {e}")
+
 
 def setup_page():
     """Configure Streamlit page settings."""
@@ -42,7 +57,7 @@ def setup_page():
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    
+
     st.markdown("""
     <style>
     .main-title {
@@ -63,17 +78,23 @@ def setup_page():
 
 
 def render_sidebar():
-    """Render sidebar with controls and information."""
+    """Render sidebar with controls and information. Returns (temperature, max_results)."""
     with st.sidebar:
         st.title("⚙️ Ayarlar")
-        
+
         # Database status
-        if st.session_state.db_initialized:
+        if st.session_state.get("db_initialized"):
             st.success("✅ Veritabanı Aktif")
             st.caption("Simülasyon: Her 2 dakikada çalışıyor")
         else:
             st.error("❌ Veritabanı Bağlantısı Yok")
-        
+
+        # Gemini status
+        if st.session_state.get("gemini_model"):
+            st.success("✅ Gemini API Aktif")
+        else:
+            st.warning("⚠️ Gemini API yapılandırılmamış")
+
         # Model settings
         st.subheader("Model Ayarları")
         temperature = st.slider(
@@ -84,7 +105,7 @@ def render_sidebar():
             step=0.1,
             help="Düşük değerler daha tutarlı, yüksek değerler daha yaratıcı yanıtlar üretir"
         )
-        
+
         max_results = st.slider(
             "Max Sonuç Sayısı",
             min_value=3,
@@ -93,20 +114,21 @@ def render_sidebar():
             step=1,
             help="Veritabanından alınacak maksimum ilgili belge sayısı"
         )
-        
+
         # Search history
         st.subheader("Arama Geçmişi")
-        if st.button("🗑️ Geçmişi Temizle"):
+        if st.button("🗑️ Sohbeti Temizle"):
+            st.session_state.messages = []
             st.session_state.search_history = []
             st.rerun()
-        
+
         if st.session_state.search_history:
             st.write("Son sorgular:")
             for query in st.session_state.search_history[-5:]:
                 st.caption(f"• {query}")
         else:
             st.caption("Geçmiş boş")
-        
+
         # Information
         st.divider()
         st.subheader("ℹ️ Bilgi")
@@ -114,97 +136,179 @@ def render_sidebar():
         Bu uygulama, ChromaDB ve Gemini API kullanarak
         işletme verilerinize dayalı akıllı sohbet
         deneyimi sağlar.
-        
+
         **Simülasyon:** Stok, siparişler ve görevler
         otomatik olarak güncelleniyor.
         """)
 
+    return temperature, max_results
 
-def render_main_chat_interface():
+
+def get_gemini_response(user_message: str, temperature: float, max_results: int) -> str:
+    """Retrieve ChromaDB context and query Gemini for a response."""
+    try:
+        context_data = get_context(user_message, n_results=max_results)
+
+        if not context_data.get("success") or not context_data["documents"]:
+            context_text = "Veritabanında ilgili bilgi bulunamadı."
+        else:
+            parts = []
+            for doc, meta in zip(context_data["documents"], context_data["metadatas"]):
+                parts.append(f"- {doc} (Tür: {meta.get('type', 'bilinmiyor')})")
+            context_text = "\n".join(parts)
+
+        model = st.session_state.get("gemini_model")
+        if model is None:
+            return (
+                "⚠️ Gemini API yapılandırılmamış. "
+                "Lütfen GEMINI_API_KEY değerini .env dosyasına ekleyin."
+            )
+
+        import google.generativeai as genai
+
+        full_prompt = (
+            "Sen bir KOBİ işletme asistanısın. Aşağıdaki bağlamda sağlanan "
+            "stok, sipariş ve görev verilerini kullanarak kullanıcının sorusunu Türkçe yanıtla.\n"
+            f"BAĞLAM:\n{context_text}\n\n"
+            f"Kullanıcı sorusu: {user_message}"
+        )
+
+        generation_config = genai.types.GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=1024,
+        )
+
+        response = model.generate_content(full_prompt, generation_config=generation_config)
+        return response.text
+
+    except Exception as e:
+        logger.error(f"Gemini API error: {e}")
+        return f"❌ Yanıt üretilirken hata oluştu: {e}"
+
+
+def render_main_chat_interface(temperature: float, max_results: int):
     """Render main chat interface."""
     st.markdown('<div class="main-title">🤖 RAG Tabanlı İşletme Asistanı</div>', unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="info-box">
-    <strong>👨‍💼 Gemini API ile RAG tabanlı sohbet ve stok tablosu buraya eklenecek</strong><br><br>
-    Lütfen işletme hakkında bir soru sorunuz. Sistem, ChromaDB veritabanında
-    ilgili bilgileri arayarak Gemini API vasıtasıyla yanıt oluşturacaktır.
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Display chat messages
+
     chat_container = st.container(height=400, border=True)
     with chat_container:
+        if not st.session_state.messages:
+            st.caption(
+                "Merhaba! İşletmeniz hakkında sorular sorabilirsiniz. "
+                "Örn: 'Kaç adet laptop var?', 'Bekleyen siparişler neler?'"
+            )
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.write(message["content"])
-    
-    # Input area
-    st.divider()
-    col1, col2 = st.columns([0.9, 0.1])
-    
-    with col1:
-        user_input = st.chat_input(
-            "📝 Soru sorunuz...",
-            placeholder="Örn: Kaç adet laptop stokumuz var?"
-        )
-    
-    with col2:
-        send_button = st.button("📤 Gönder", use_container_width=True)
-    
-    if user_input and send_button:
-        # Add user message to history
-        st.session_state.messages.append({
-            "role": "user",
-            "content": user_input
-        })
+
+    user_input = st.chat_input("Örn: Kaç adet laptop stokumuz var?")
+
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.search_history.append(user_input)
-        
-        # TODO: Developer B - Add Gemini API RAG response logic here
-        # Steps:
-        # 1. Call get_context(user_input) from shared_utils
-        # 2. Send context + user_input to Gemini API
-        # 3. Parse and display response
-        
-        # Placeholder response
-        bot_response = "Bu fonksiyon henüz geliştirilmektedir. Gemini API entegrasyonu yapılacaktır."
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": bot_response
-        })
-        
+
+        with st.spinner("Yanıt hazırlanıyor..."):
+            bot_response = get_gemini_response(user_input, temperature, max_results)
+
+        st.session_state.messages.append({"role": "assistant", "content": bot_response})
         st.rerun()
 
 
+def _highlight_critical_stock(row: pd.Series):
+    """Return red background for rows where Miktar < 10."""
+    if "Miktar" in row and row["Miktar"] < 10:
+        return ["background-color: #ffcccc"] * len(row)
+    return [""] * len(row)
+
+
 def render_data_view_section():
-    """Render data viewing section."""
+    """Render data viewing section with three tabs."""
     st.divider()
     st.subheader("📊 Veri Görüntüsü")
-    
-    view_options = st.tabs(["Stok Durumu", "Siparişler", "Görevler"])
-    
-    with view_options[0]:
-        st.write("📦 Stok Durumu Tablosu")
-        st.caption("Stok bilgileri bu bölüme eklenecektir")
-        # TODO: Developer B - Add stock data table here
-    
-    with view_options[1]:
-        st.write("🛒 Siparişler Tablosu")
-        st.caption("Sipariş bilgileri bu bölüme eklenecektir")
-        # TODO: Developer B - Add orders data table here
-    
-    with view_options[2]:
-        st.write("✅ Görevler Listesi")
-        st.caption("Görev bilgileri bu bölüme eklenecektir")
-        # TODO: Developer B - Add tasks data here
+
+    tab_stok, tab_siparis, tab_gorev = st.tabs(["Stok Durumu", "Siparişler", "Görevler"])
+
+    with tab_stok:
+        try:
+            col = get_collection()
+            results = col.get(where={"type": "stok"}, include=["documents", "metadatas"])
+            metas = results["metadatas"]
+            docs = results["documents"]
+            st.write(f"📦 {len(metas)} ürün")
+            if metas:
+                rows = [
+                    {
+                        "Ürün": (d[:60] + "...") if len(d) > 60 else d,
+                        "Kategori": m.get("kategori", ""),
+                        "Miktar": m.get("miktar", 0),
+                        "Fiyat (₺)": m.get("fiyat", 0),
+                        "Son Güncelleme": str(m.get("son_guncelleme", ""))[:19],
+                    }
+                    for d, m in zip(docs, metas)
+                ]
+                df = pd.DataFrame(rows)
+                styled = df.style.apply(_highlight_critical_stock, axis=1)
+                st.dataframe(styled, use_container_width=True)
+            else:
+                st.info("Stok verisi bulunamadı.")
+        except Exception as e:
+            st.error(f"Stok verisi yüklenemedi: {e}")
+
+    with tab_siparis:
+        try:
+            col = get_collection()
+            results = col.get(where={"type": "sipariş"}, include=["documents", "metadatas"])
+            metas = results["metadatas"]
+            docs = results["documents"]
+            st.write(f"🛒 {len(metas)} sipariş")
+            if metas:
+                rows = [
+                    {
+                        "Sipariş": (d[:60] + "...") if len(d) > 60 else d,
+                        "Müşteri": m.get("musteri", ""),
+                        "Tutar (₺)": m.get("tutar", 0),
+                        "Durum": m.get("durum", ""),
+                        "Son Güncelleme": str(m.get("son_guncelleme", ""))[:19],
+                    }
+                    for d, m in zip(docs, metas)
+                ]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            else:
+                st.info("Sipariş verisi bulunamadı.")
+        except Exception as e:
+            st.error(f"Sipariş verisi yüklenemedi: {e}")
+
+    with tab_gorev:
+        try:
+            col = get_collection()
+            results = col.get(where={"type": "görev"}, include=["documents", "metadatas"])
+            metas = results["metadatas"]
+            docs = results["documents"]
+            st.write(f"✅ {len(metas)} görev")
+            if metas:
+                rows = [
+                    {
+                        "Görev": (d[:60] + "...") if len(d) > 60 else d,
+                        "Kategori": m.get("kategori", ""),
+                        "Öncelik": m.get("oncelik", ""),
+                        "Son Tarih": m.get("son_tarih", ""),
+                        "Durum": m.get("status", ""),
+                    }
+                    for d, m in zip(docs, metas)
+                ]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            else:
+                st.info("Görev verisi bulunamadı.")
+        except Exception as e:
+            st.error(f"Görev verisi yüklenemedi: {e}")
 
 
 def main():
     """Main application entry point."""
-    initialize_session_state()
     setup_page()
-    render_sidebar()
-    render_main_chat_interface()
+    initialize_session_state()
+    temperature, max_results = render_sidebar()
+    render_main_chat_interface(temperature, max_results)
     render_data_view_section()
 
 

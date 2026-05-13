@@ -76,6 +76,9 @@ app.include_router(
     tags=["Chat"]
 )
 
+from routers import automation_router
+app.include_router(automation_router.router, prefix="/api/automation", tags=["Automation"])
+
 
 # ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])

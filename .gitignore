@@ -139,3 +139,7 @@ secrets/
 .secrets/
 private/
 credentials/
+
+CLAUDE.md
+.env
+.env.example
